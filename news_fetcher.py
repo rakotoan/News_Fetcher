@@ -5,52 +5,61 @@ import datetime as dt
 from newsapi import NewsApiClient
 
 
-
 from openpyxl import Workbook
 from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter
+from openpyxl.styles import Alignment
+
 from pathlib import Path
 from datetime import datetime
+
 import sys
 import json
 
 data = json.loads(sys.argv[1])
 
 
-
 newsapi = NewsApiClient(api_key="875cb8982b934e1698eb61c92f44594a")
-key_word = data["text_inputs"]["Key Words: e.g Nasdaq, S&P500, Brent..."]
 
+# Gettting keywords
+key_word = data["text_inputs"]["Key Words: e.g Nasdaq, S&P500, Brent..."]
 keywords = [x.strip() for x in key_word.split(",") if x.strip()]
 
+# Getting beginning date
 beginning_date = data["text_inputs"]["Beginning Date : DD/MM/YYYY"]
 b_date = [x.strip() for x in beginning_date.split("/") if x.strip()]
 b_day = int(b_date[0])
 b_month = int(b_date[1])
 b_year = int(b_date[-1])
 
+# Getting ending date
 ending_date = data["text_inputs"]["Ending Date : DD/MM/YYYY"]
 e_date = [x.strip() for x in beginning_date.split("/") if x.strip()]
 e_day = int(e_date[0])
 e_month = int(e_date[1])
 e_year = int(e_date[-1])
 
+# Getting beginning hours
 beginning_hour = data["button_inputs"]["Beginning Hour"]
 b_hour = int(beginning_hour)
 
+# Getting ending hours
 ending_hour = data["button_inputs"]["Ending Hour"]
 e_hour = int(ending_hour)
 
+# Initializing the dataframe
 article_info = pd.DataFrame(columns=["Source","Date","Title","Summary","Link"])
 categories = ["business", "general", "science", "technology"]
+
 rows = []
 
 for keyword in keywords:
+    print(keyword)
     articles = newsapi.get_everything(
-        q=keyword,  # keyword just in title
-        from_param=dt.datetime(b_year, b_month, b_day, b_hour , 0, 0), # 8h UTC donc 10h Pairs été
-        to=dt.datetime(e_year, e_month, e_day , e_hour, 0, 0),  # 14h UTC donc 16h Paris été
+        q=keyword,  # keyword in title and text
+        from_param=dt.datetime(b_year, b_month, b_day, b_hour , 0, 0), # if 8 am UTC then 10 am Paris time in summer
+        to=dt.datetime(e_year, e_month, e_day , e_hour, 0, 0),  # 2pm UTC then 4 pm Paris time
         language="en",
         sort_by="publishedAt",
         page_size=100)
@@ -70,9 +79,11 @@ for keyword in keywords:
 
 article_info = pd.DataFrame(rows)
         
-# Option 1 : enlever le tz au niveau pandas
+# Dates int the right format
 article_info["Date"] = article_info["Date"].dt.tz_localize(None)
 
+
+# Exporting the dataframe into a .xlsx
 
 wb = Workbook()
 ws1 = wb.active
@@ -82,12 +93,13 @@ row_num = 1
 for row in dataframe_to_rows(article_info,index=False,header=True):
     ws1.append(row)
 
+# Bold on the first row
 def bold_first_row(ws):
     bold = Font(bold=True)
     for cell in ws1[1]:
         cell.font = bold
 
-
+# Adjusting columns width
 def autofit_columns(ws):
     for col in ws.columns:
         max_length = 0
@@ -95,20 +107,20 @@ def autofit_columns(ws):
         for cell in col:
             value = cell.value
             if value is not None:
-                # on convertit en str pour mesurer la longueur
                 max_length = max(max_length, len(str(value)))
-        # petit +2 pour respirer un peu
         ws.column_dimensions[col_letter].width = max_length + 2
 
 bold_first_row(ws1)
 autofit_columns(ws1)
-from openpyxl.styles import Alignment
 
-# Wrap sur la colonne Summary (colonne 4, sans toucher aux autres)
+
+# Adjusting summmary column
 for row in ws1.iter_rows(min_row=2, min_col=4, max_col=4):
     for cell in row:
         cell.alignment = Alignment(wrap_text=True)
 
+
+# Saving the file
 output_dir = Path("outputs")
 output_dir.mkdir(parents=True, exist_ok=True)
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
